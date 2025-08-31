@@ -1,120 +1,172 @@
-// ============================================================================
-//         PROJETO WAR ESTRUTURADO - DESAFIO DE CÓDIGO
-// ============================================================================
-// Objetivos:
-// - Modularizar completamente o código em funções especializadas.
-// - Implementar um sistema de missões para um jogador.
-// - Criar uma função para verificar se a missão foi cumprida.
-// - Utilizar passagem por referência (ponteiros) para modificar dados e
-//   passagem por valor/referência constante (const) para apenas ler.
-// ============================================================================
-
-/* Bibliotecas */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <locale.h>
 
-/* Constantes Globais*/
-#define N_TERRITORIOS 10
-#define N_MISSOES 6
-#define MAX_NOME 30
+#define MAX_TERRITORIOS 5
+#define MAX_NOME        30
+#define MAX_COR         20
 
-// cores de exército
-enum { NEUTRO = 0, VERMELHO, AZUL, VERDE, AMARELO };
-
-// estrutura de cada território
 typedef struct {
-    char nome [MAX_NOME];
-    int owner; // 0 = neutro, 1 = vermelho, 2 = azul, 3 = verde, 4 = amarelo
+    char nome[MAX_NOME];
+    char cor[MAX_COR];
     int tropas;
 } Territorio;
 
-// protóyipo de funções
+// contador global de terras conquistadas
+static int conquistas = 0;
 
-// setup e gerenciamento de memoria
-Territorio* allocatemap(size_t n);
-void iniciaisTerritorios(Territorio* mapa, size_t n);
-void freemap(Territorio* mapa);
+void limparBuffer(void) {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF) { }
+}
 
-// interface usuário
-void limparBuffer(void);
-void exibirMenu(void);
-void exibirMapa(const Territorio* mapa, size_t n);
-void exibirMissao(int missaoID, int corJogador);
+void inicializaTerritorios(Territorio* t, int n) {
+    for (int i = 0; i < n; i++) {
+        printf("Cadastro do Territorio %d\n", i + 1);
 
-//lógica principal
-void faseAtaque(Territorio* mapa, size_t n, int corJogador);
-void simulandoAtaque(Territorio* mapa, int idxFrom, int idxTo);
-int verificavoiditoria(const Territorio* mapa, size_t n, int missaoId, int corJogador);
-int escolhaMissao(void);
+        printf("  Nome: ");
+        fgets(t[i].nome, MAX_NOME, stdin);
+        t[i].nome[strcspn(t[i].nome, "\n")] = '\0';
 
-// utilitárias
-const char* nomeCor(int cor);
+        printf("  Cor do exército: ");
+        fgets(t[i].cor, MAX_COR, stdin);
+        t[i].cor[strcspn(t[i].cor, "\n")] = '\0';
 
-int main(void) {
-    setlocale(LC_ALL, "Português");
-    srand ((unsigned)time(NULL));
-
-    Territorio *mundo = allocatemap(N_TERRITORIOS);
-    if (!mundo) {
-        fprintf(stderr, "Erro: memória insuficiente.\n");
-        return EXIT_FAILURE;
-    }
-    iniciaisTerritorios(mundo, N_TERRITORIOS);
-    int corJogador = (rand() % 4) + 1;
-    int missaoID = escolhaMissao();
-
-    int opcao;
-    do {
-        exibirMapa(mundo, N_TERRITORIOS);
-        exibirMissao(missaoID, corJogador);
-        exibirMenu();
-        scanf("%d", &opcao);
+        printf("  Tropas iniciais: ");
+        scanf("%d", &t[i].tropas);
         limparBuffer();
 
-        switch (opcao) {
+        puts("");
+    }
+}
+
+void exibirMapa(const Territorio* t, int n) {
+    puts("Estado atual do Mapa:");
+    for (int i = 0; i < n; i++) {
+        printf(" [%d] %-25s | Cor: %-10s | Tropas: %2d\n",
+               i + 1, t[i].nome, t[i].cor, t[i].tropas);
+    }
+    puts("");
+}
+
+void atacar(Territorio* t, int n) {
+    int idAtt, idDef;
+    printf("Escolha o atacante (1-%d): ", n);
+    scanf("%d", &idAtt);
+    limparBuffer();
+
+    printf("Escolha o defensor (1-%d): ", n);
+    scanf("%d", &idDef);
+    limparBuffer();
+
+    if (idAtt < 1 || idAtt > n || idDef < 1 || idDef > n) {
+        puts("Selecao invalida. Tente novamente.\n");
+        return;
+    }
+    if (idAtt == idDef) {
+        puts("Atacante e defensor devem ser territorios diferentes.\n");
+        return;
+    }
+    if (t[idAtt-1].tropas < 1) {
+        puts("Territorio atacante sem tropas suficientes.\n");
+        return;
+    }
+    if (t[idDef-1].tropas < 1) {
+        puts("Territorio defensor ja esta sem tropas.\n\n");
+        return;
+    }
+
+    int dadoAtt = rand() % 6 + 1;
+    int dadoDef = rand() % 6 + 1;
+    printf("  Dado Atacante: %d  |  Dado Defensor: %d\n", dadoAtt, dadoDef);
+
+    if (dadoAtt >= dadoDef) {
+        t[idDef-1].tropas--;
+        if (t[idDef-1].tropas <= 0) {
+            printf("  Territorio %s conquistado!\n", t[idDef-1].nome);
+            // conquista: cor e tropas resetadas
+            strcpy(t[idDef-1].cor, t[idAtt-1].cor);
+            t[idDef-1].tropas = 1;
+            conquistas++;
+        } else {
+            puts("  Defensor perdeu 1 tropa.");
+        }
+    } else {
+        t[idAtt-1].tropas--;
+        puts("  Atacante perdeu 1 tropa.");
+    }
+    putchar('\n');
+}
+
+int verificarMissao(const Territorio* t, int n, int missaoTipo) {
+    if (missaoTipo == 0) {
+        // missão: destruir exército Verde
+        for (int i = 0; i < n; i++) {
+            if (strcmp(t[i].cor, "Verde") == 0) {
+                return 0;
+            }
+        }
+        return 1;
+    } else {
+        // missão: conquistar 3 territórios
+        return (conquistas >= 3);
+    }
+}
+
+int main(void) {
+    srand((unsigned)time(NULL));
+
+    Territorio* mapa = calloc(MAX_TERRITORIOS, sizeof *mapa);
+    if (!mapa) {
+        perror("Falha na alocacao");
+        return EXIT_FAILURE;
+    }
+
+    puts("=== Desafio WAR Estruturado ===\n");
+    inicializaTerritorios(mapa, MAX_TERRITORIOS);
+
+    int missaoTipo = rand() % 2; 
+    if (missaoTipo == 0) {
+        puts("Missao: Destruir o exército Verde.\n");
+    } else {
+        puts("Missao: Conquistar 3 territorios.\n");
+    }
+
+    exibirMapa(mapa, MAX_TERRITORIOS);
+
+    int opc;
+    do {
+        puts("Menu:");
+        puts(" 1 - Atacar");
+        puts(" 2 - Verificar Missao");
+        puts(" 0 - Sair");
+        printf("Escolha: ");
+        scanf("%d", &opc);
+        limparBuffer();
+        putchar('\n');
+
+        switch (opc) {
             case 1:
-                faseAtaque(mundo, N_TERRITORIOS, corJogador);
+                atacar(mapa, MAX_TERRITORIOS);
+                exibirMapa(mapa, MAX_TERRITORIOS);
                 break;
             case 2:
-                if (verificavoiditoria(mundo, N_TERRITORIOS, missaoID, corJogador)) {
-                    printf("\n Parabéns! Você cumpriu sua missão!\n\n");
-                    opcao = 0; // encerra
+                if (verificarMissao(mapa, MAX_TERRITORIOS, missaoTipo)) {
+                    puts("Parabens! Missao cumprida.\n");
+                    opc = 0;  // encerra o jogo
                 } else {
-                    printf("\nMissão ainda não concluida. Continue lutando!\n\n");
+                    puts("Missao ainda nao esta completa.\n");
                 }
                 break;
             case 0:
-                printf("\nSaindo do jogo...\n\n");
+                puts("Saindo do jogo. Ate a proxima!\n");
                 break;
             default:
-                printf("Opção inválida. Tente novamente.\n\n");
+                puts("Opcao invalida. Tente novamente.\n");
         }
-        if (opcao != 0) {
-            printf("Pressione Enter para continuar...");
-            getchar();
-        }
-    } while (opcao != 0);
-    freemap(mundo);
+    } while (opc != 0);
+
+    free(mapa);
     return EXIT_SUCCESS;
 }
-
-// Aloca dinamicamente um vetor de territórios
-Territorio* allocatemap(size_t n) {
-    return calloc(n, sizeof(Territorio));
-}
-
-// Preenche nomes, donos e tropas iniciais
-void iniciaisTerritorios(Territorio* mapa, size_t n) {
-    const char *defaultNames[N_TERRITORIOS] = {"Brasil", "Venezuela", "Peru", "Argentina", "Argélia", "Egito", "Sudão", "Congo", "África do Sul", "Madagascar",};
-    for (size_t i = 0; i < n; i++) {
-        strncpy(mapa[i].nome, defaultNames[i], MAX_NOME - 1);
-        mapa[i].owner = (rand() % 4) + 1; 
-        mapa[i].tropas = (rand() % 8) + 1;
-    }
-}
-
-// Liberar o vetor de territórios
-
